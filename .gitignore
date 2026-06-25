@@ -1,0 +1,21 @@
+# Python / AI Model ignores
+__pycache__/
+*.py[cod]
+*$py.class
+*.pt
+*.ckpt
+wandb/
+data/processed/
+checkpoints/
+
+# .NET / C# ignores
+bin/
+obj/
+*.db
+
+# Flutter / Dart ignores
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
