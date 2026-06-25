@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
-from model.heads import NeuroMotionModel
+from neuromotion_core.model.heads import NeuroMotionModel
 from training.losses import InfoNCELoss
-from preprocessing.graph_utils import build_adjacency_matrix
+from neuromotion_core.preprocessing.graph_utils import build_adjacency_matrix
 from training.metrics import compute_pearson_r, compute_r2
 
 class NeuroMotionLightningModule(pl.LightningModule):

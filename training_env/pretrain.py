@@ -22,7 +22,15 @@ if not all_files:
     exit(1)
 
 dataset = NeuroMotionDataset(file_paths=all_files, dataset_type="MIXED", mode="ssl", window_size=config['data']['window_size'])
-dataloader = DataLoader(dataset, batch_size=config['training']['batch_size'], shuffle=True, drop_last=True)
+# أضفنا num_workers=2 عشان التحميل يتم بالتوازي
+dataloader = DataLoader(
+    dataset,
+    batch_size=config['training']['batch_size'],
+    shuffle=True,
+    drop_last=True,
+    num_workers=2,
+    pin_memory=True
+)
 
 model = NeuroMotionLightningModule(config)
 
@@ -36,7 +44,9 @@ wandb_logger = WandbLogger(project="NeuroMotion-ADS", name="SSL-Pretrain")
 
 trainer = pl.Trainer(
     max_epochs=config['training']['max_epochs'], 
-    accelerator="auto",
+    accelerator="gpu",          # إجبار الكود على استخدام الـ GPU
+    devices=1,                  # استخدام GPU واحد
+    precision="16-mixed",       # تفعيل سرعة Mixed Precision (سرعة مضاعفة)
     callbacks=callbacks,
     logger=wandb_logger
 )

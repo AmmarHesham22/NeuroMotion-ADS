@@ -8,7 +8,6 @@ import seaborn as sns
 from sklearn.manifold import TSNE
 from torch.utils.data import DataLoader
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from dataset.builder import NeuroMotionDataset
 from training.trainer import NeuroMotionLightningModule
 

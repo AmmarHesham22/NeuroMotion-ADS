@@ -6,24 +6,26 @@ import torch
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from ai_service.vision.pose_engine import PoseEngine
-from ai_service.vision.gaze_engine import GazeEngine
-from ai_service.pipeline.stream_chunker import StreamChunker
-from ai_service.utils.scaler import CoordinateScaler
-from ai_service.utils.model_loader import NeuroMotionInferenceSession
+from vision_engines.pose_engine import PoseEngine
+from vision_engines.gaze_engine import GazeEngine
+from pipeline.stream_chunker import StreamChunker
+from inference.scaler import CoordinateScaler
+from inference.model_loader import NeuroMotionInferenceSession
 
 router = APIRouter()
 
-# Global instantiations (Mocking checkpoint path for now as per instructions)
+# Global instantiations
+CHECKPOINT_PATH = os.getenv("NEUROMOTION_MODEL_PATH", "models/default_checkpoint.ckpt")
+SCALER_PATH = os.getenv("NEUROMOTION_SCALER_PATH", "models/default_scaler.json")
+
 try:
-    inference_session = NeuroMotionInferenceSession(checkpoint_path="dummy_path.ckpt")
+    inference_session = NeuroMotionInferenceSession(checkpoint_path=CHECKPOINT_PATH)
 except Exception as e:
     print(f"Warning: Failed to load inference session globally. Exception: {e}")
     inference_session = None
 
 scaler = CoordinateScaler()
-scaler.load_scaler("dummy_scaler_path.json")
+scaler.load_scaler(SCALER_PATH)
 
 VALID_VIDEO_TYPES = {"video/mp4", "video/avi", "video/x-msvideo", "video/quicktime"}
 MAX_FILE_SIZE = 100 * 1024 * 1024 # 100 MB

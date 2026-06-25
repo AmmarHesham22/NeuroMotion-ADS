@@ -4,11 +4,10 @@ import yaml
 import torch
 
 # Add the project root to sys.path so we can import modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from dataset.builder import NeuroMotionDataset
 from training.trainer import NeuroMotionLightningModule
-from preprocessing.graph_utils import build_adjacency_matrix
+from neuromotion_core.preprocessing.graph_utils import build_adjacency_matrix
 from inference.anomaly_scorer import AnomalyScorer
 
 def run_sanity_check():

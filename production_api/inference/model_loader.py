@@ -4,9 +4,8 @@ import torch
 import sys
 
 # Ensure the root directory is accessible for imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from model.heads import NeuroMotionModel
-from preprocessing.graph_utils import build_adjacency_matrix
+from neuromotion_core.model.heads import NeuroMotionModel
+from neuromotion_core.preprocessing.graph_utils import build_adjacency_matrix
 
 def load_inference_model(checkpoint_path: str, config_path: str = None, device: str = "cpu"):
     """

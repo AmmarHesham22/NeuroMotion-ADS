@@ -1,0 +1,7 @@
+-e ../neuromotion_core
+-r ../production_api/requirements-prod.txt
+pytorch-lightning
+pandas
+wandb
+matplotlib
+seaborn

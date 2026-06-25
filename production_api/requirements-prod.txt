@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+torch
+torchvision
+torchaudio
+torch_geometric
+einops
+scikit-learn
+numpy
+pyyaml
+mediapipe
+python-multipart
+opencv-python
