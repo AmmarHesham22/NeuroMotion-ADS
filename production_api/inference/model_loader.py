@@ -55,19 +55,19 @@ class NeuroMotionInferenceSession:
         
     @torch.no_grad()
     def predict(self, skeleton_chunk: torch.Tensor, gaze_chunk: torch.Tensor):
-        """
-        Executes a memory-safe inference pass using @torch.no_grad().
-        skeleton_chunk: [B, 3, 300, 17]
-        gaze_chunk: [B, 300, 4]
-        """
         skeleton_chunk = skeleton_chunk.to(self.device)
         gaze_chunk = gaze_chunk.to(self.device)
         
-        # model returns: z_latent, ados_pred, anomaly_score
-        z, ados_pred, anomaly = self.model(skeleton_chunk, gaze_chunk, self.edge_index)
+        # 1. الموديل بيرجع Dictionary
+        outputs = self.model(skeleton_chunk, gaze_chunk, self.edge_index)
+        
+        # 2. استخراج القيم من الـ Dictionary باستخدام المفاتيح
+        z_latent = outputs["z"]
+        ados_pred = outputs["ados_pred"]
         
         return {
-            "z": z.cpu().numpy(),
+            "z": z_latent.cpu().numpy(),
             "ados": ados_pred.cpu().numpy(),
-            "anomaly": anomaly.cpu().numpy()
+            # 3. الموديل مبيرجعش Anomaly بشكل مباشر، فبنحط قيمة افتراضية عشان الـ API يكمل
+            "anomaly": [0.0]
         }

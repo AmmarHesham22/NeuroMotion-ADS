@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
+# استدعاء الملفات الخاصة بالمشروع
 from vision_engines.pose_engine import PoseEngine
 from vision_engines.gaze_engine import GazeEngine
 from pipeline.stream_chunker import StreamChunker
@@ -17,14 +18,17 @@ from inference.model_loader import NeuroMotionInferenceSession
 
 router = APIRouter()
 
-# تأكد من اسم ملف الموديل بتاعك هنا
-CHECKPOINT_PATH = os.getenv("NEUROMOTION_MODEL_PATH", "model/neuromotion-epoch=36-train_infonce_loss=0.0000.ckpt")
-SCALER_PATH = os.getenv("NEUROMOTION_SCALER_PATH", "models/default_scaler.json")
+# ==================================================
+# التعديل الجذري هنا: مسار الموديل الفعلي الموجود عندك في المشروع
+# ==================================================
+CHECKPOINT_PATH = "model/neuromotion-epoch=36-train_infonce_loss=0.0000.ckpt"
+SCALER_PATH = "models/default_scaler.json"
 
+# محاولة تحميل الموديل في الذاكرة (Memory)
 try:
     inference_session = NeuroMotionInferenceSession(checkpoint_path=CHECKPOINT_PATH)
 except Exception as e:
-    print(f"Warning: Failed to load inference session globally. Exception: {e}")
+    print(f"CRITICAL WARNING: Failed to load inference session globally. Exception: {e}")
     inference_session = None
 
 scaler = CoordinateScaler()
@@ -36,124 +40,136 @@ MAX_FILE_SIZE = 100 * 1024 * 1024 # 100 MB
 def process_video_pipeline(video_path: str):
     start_processing_time = time.time()
     
-    pose_engine = PoseEngine()
-    gaze_engine = GazeEngine()
-    chunker = StreamChunker(window_size=300)
+    pose_engine = None
+    gaze_engine = None
+    cap = None
     
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        pose_engine.close()
-        gaze_engine.close()
-        raise ValueError("Failed to open video file.")
+    # استخدام try-finally لمنع تسريب الذاكرة نهائياً
+    try:
+        pose_engine = PoseEngine()
+        gaze_engine = GazeEngine()
+        chunker = StreamChunker(window_size=300)
         
-    # استخراج بيانات الفيديو (Metadata)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps <= 0: fps = 30.0
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration_sec = total_frames / fps if fps > 0 else 0
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    original_resolution = f"{width}x{height}"
-        
-    frame_count = 0
-    ados_scores = []
-    anomaly_scores = []
-    flagged_segments = []
-    
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError("Failed to open video file.")
             
-        timestamp_sec = frame_count / fps
-        
-        # 1. استخراج الخصائص
-        skeleton = pose_engine.extract_frame_joints(frame)
-        gaze = gaze_engine.extract_gaze_features(frame)
-        
-        # 2. تجميع الفريمات
-        chunker.add_frame(skeleton, gaze, timestamp_sec)
-        
-        # 3. جلب الـ Chunks الجاهزة للموديل
-        chunks = chunker.get_chunks(overlap_frames=150)
-        
-        for skel_chunk, gaze_chunk in chunks:
-            skel_scaled = scaler.transform(skel_chunk)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0: fps = 30.0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration_sec = total_frames / fps if fps > 0 else 0
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        original_resolution = f"{width}x{height}"
             
-            skel_tensor = torch.tensor(skel_scaled).unsqueeze(0)
-            gaze_tensor = torch.tensor(gaze_chunk).unsqueeze(0)
-            
-            if inference_session is not None:
-                results = inference_session.predict(skel_tensor, gaze_tensor)
-                current_ados = float(results["ados"][0])
-                current_anomaly = float(results["anomaly"][0])
+        frame_count = 0
+        ados_scores = []
+        anomaly_scores = []
+        flagged_segments = []
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
                 
-                ados_scores.append(current_ados)
-                anomaly_scores.append(current_anomaly)
-                
-                # خوارزمية تحديد المقاطع الخطرة (Flagged Segments)
-                if current_anomaly > 3.0 or current_ados > 6.0:
-                    segment_start = max(0, timestamp_sec - 10.0)
-                    flagged_segments.append({
-                        "start_time_sec": round(segment_start, 2),
-                        "end_time_sec": round(timestamp_sec, 2),
-                        "behavior_type": "high_anomaly_detected",
-                        "severity": "high" if current_ados > 7.0 else "medium",
-                        "attention_weight": round(min(1.0, current_anomaly / 5.0), 2)
-                    })
-            else:
-                ados_scores.append(5.0)
-                anomaly_scores.append(0.1)
+            timestamp_sec = frame_count / fps
             
-        frame_count += 1
+            # 1. استخراج الخصائص
+            skeleton = pose_engine.extract_frame_joints(frame)
+            gaze = gaze_engine.extract_gaze_features(frame)
+            
+            # 2. تجميع الفريمات في الـ Chunker
+            chunker.add_frame(skeleton, gaze, timestamp_sec)
+            
+            # 3. جلب الـ Chunks الجاهزة للموديل
+            chunks = chunker.get_chunks(overlap_frames=150)
+            
+            for skel_chunk, gaze_chunk in chunks:
+                skel_scaled = scaler.transform(skel_chunk)
+                
+                skel_tensor = torch.tensor(skel_scaled).unsqueeze(0)
+                gaze_tensor = torch.tensor(gaze_chunk).unsqueeze(0)
+                
+                if inference_session is not None:
+                    results = inference_session.predict(skel_tensor, gaze_tensor)
+                    current_ados = float(results["ados"][0])
+                    current_anomaly = float(results["anomaly"][0])
+                    
+                    ados_scores.append(current_ados)
+                    anomaly_scores.append(current_anomaly)
+                    
+                    # خوارزمية تحديد المقاطع الخطرة (Flagged Segments)
+                    if current_anomaly > 3.0 or current_ados > 6.0:
+                        segment_start = max(0, timestamp_sec - 10.0)
+                        flagged_segments.append({
+                            "start_time_sec": round(segment_start, 2),
+                            "end_time_sec": round(timestamp_sec, 2),
+                            "behavior_type": "high_anomaly_detected",
+                            "severity": "high" if current_ados > 7.0 else "medium",
+                            "attention_weight": round(min(1.0, current_anomaly / 5.0), 2)
+                        })
+                else:
+                    ados_scores.append(5.0)
+                    anomaly_scores.append(0.1)
+                
+            frame_count += 1
+            
+        processing_time_ms = int((time.time() - start_processing_time) * 1000)
         
-    cap.release()
-    pose_engine.close()
-    gaze_engine.close()
-    
-    processing_time_ms = int((time.time() - start_processing_time) * 1000)
-    
-    if len(ados_scores) == 0:
-        raise ValueError("Video was too short to form a single 300-frame sequence.")
+        if len(ados_scores) == 0:
+            raise ValueError("Video was too short to form a single 300-frame sequence.")
+            
+        avg_ados = sum(ados_scores) / len(ados_scores)
+        avg_anomaly = sum(anomaly_scores) / len(anomaly_scores)
         
-    avg_ados = sum(ados_scores) / len(ados_scores)
-    avg_anomaly = sum(anomaly_scores) / len(anomaly_scores)
-    
-    # حساب نسبة الخطر
-    risk_score_percentage = min(100.0, avg_ados * 10.0)
-        
-    return {
-        "prediction_id": str(uuid.uuid4()),
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-        "analysis_result": {
-            "risk_score_percentage": round(risk_score_percentage, 1),
-            "anomaly_distance": round(avg_anomaly, 2),
-            "ados_regression_score": round(avg_ados, 1),
-            "overall_confidence": 0.89
-        },
-        "behavioral_profile": {
-            "flagged_segments": flagged_segments
-        },
-        "extraction_metrics": {
-            "skeleton_valid_frames_percentage": 92.4,
-            "gaze_valid_frames_percentage": 88.1,
-            "imputation_rate_percentage": 7.6
-        },
-        "metadata": {
-            "model_version": "v1.2.0-STGCN-InfoNCE",
-            "processing_time_ms": processing_time_ms,
-            "video": {
-                "duration_sec": round(duration_sec, 2),
-                "fps_analyzed": round(fps, 2),
-                "original_resolution": original_resolution
+        # حساب نسبة الخطر
+        risk_score_percentage = min(100.0, avg_ados * 10.0)
+            
+        return {
+            "prediction_id": str(uuid.uuid4()),
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "analysis_result": {
+                "risk_score_percentage": round(risk_score_percentage, 1),
+                "anomaly_distance": round(avg_anomaly, 2),
+                "ados_regression_score": round(avg_ados, 1),
+                "overall_confidence": 0.89
+            },
+            "behavioral_profile": {
+                "flagged_segments": flagged_segments
+            },
+            "extraction_metrics": {
+                "skeleton_valid_frames_percentage": 92.4,
+                "gaze_valid_frames_percentage": 88.1,
+                "imputation_rate_percentage": 7.6
+            },
+            "metadata": {
+                "model_version": "v1.2.0-STGCN-InfoNCE",
+                "processing_time_ms": processing_time_ms,
+                "video": {
+                    "duration_sec": round(duration_sec, 2),
+                    "fps_analyzed": round(fps, 2),
+                    "original_resolution": original_resolution
+                }
             }
         }
-    }
+
+    finally:
+        # إغلاق كل الموارد بشكل إجباري لضمان حماية الذاكرة
+        if cap is not None:
+            cap.release()
+        if pose_engine is not None:
+            pose_engine.close()
+        if gaze_engine is not None:
+            gaze_engine.close()
 
 @router.post("/predict")
 async def predict(video: UploadFile = File(...)):
+    # حماية ضد التشغيل لو الموديل مش موجود
+    if inference_session is None:
+        raise HTTPException(status_code=503, detail="AI Model is not loaded. Service Unavailable.")
+        
     if video.content_type not in VALID_VIDEO_TYPES:
-        raise HTTPException(status_code=400, detail=f"Invalid file type {video.content_type}. Supported types are: {VALID_VIDEO_TYPES}")
+        raise HTTPException(status_code=400, detail=f"Invalid file type {video.content_type}. Supported types: mp4, avi, mov")
         
     contents = await video.read()
     if len(contents) > MAX_FILE_SIZE:
@@ -164,6 +180,7 @@ async def predict(video: UploadFile = File(...)):
         with os.fdopen(fd, 'wb') as f:
             f.write(contents)
             
+        # تشغيل خط المعالجة في Thread منفصل
         results = await run_in_threadpool(process_video_pipeline, temp_path)
         
         return {
@@ -171,8 +188,11 @@ async def predict(video: UploadFile = File(...)):
             **results
         }
         
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        # حذف ملف الفيديو المؤقت
         if os.path.exists(temp_path):
             os.remove(temp_path)
