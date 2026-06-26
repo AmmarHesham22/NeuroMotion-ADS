@@ -1,0 +1,6 @@
+setup.py
+neuromotion_core.egg-info/PKG-INFO
+neuromotion_core.egg-info/SOURCES.txt
+neuromotion_core.egg-info/dependency_links.txt
+neuromotion_core.egg-info/requires.txt
+neuromotion_core.egg-info/top_level.txt

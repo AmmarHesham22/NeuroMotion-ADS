@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import GCNConv
 from einops import rearrange
-
+from torch_geometric.utils import to_dense_adj
+ 
 class STGCNLayer(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -33,10 +34,18 @@ class STGCNLayer(nn.Module):
         
         # Create a batched edge_index for (B*T) graphs
         # But wait, GCNConv supports [N, in_channels].
-        out_gcn = torch.zeros((B*T, V, self.gcn.out_channels), device=x.device)
-        for i in range(B*T):
-            out_gcn[i] = self.gcn(x[i], edge_index)
-            
+        # out_gcn = torch.zeros((B*T, V, self.gcn.out_channels), device=x.device)
+        # for i in range(B*T):
+        #     out_gcn[i] = self.gcn(x[i], edge_index)
+        # استبدل حلقة الـ for loop بهذا الكود (Vectorized):
+        # أولاً: نحول الـ edge_index إلى Dense Adjacency Matrix (مرة واحدة في الـ __init__ أو هنا)
+        adj = to_dense_adj(edge_index, max_num_nodes=V).squeeze(0) # [V, V]
+
+        # ثانياً: نطبق الـ GCN يدوياً كعمليات مصفوفات سريعة جداً
+        # x shape is [(B T), V, C_in]
+        # W weight shape from self.gcn.lin.weight
+        x_transformed = self.gcn.lin(x) # [(B T), V, C_out]
+        out_gcn = torch.matmul(adj, x_transformed) # [(B T), V, C_out]
         x = out_gcn # [(B T), V, C_out]
         x = rearrange(x, '(b t) v c -> b c t v', b=B, t=T)
         

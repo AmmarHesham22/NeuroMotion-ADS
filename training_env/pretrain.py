@@ -14,7 +14,8 @@ with open('config/default_config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 # Gather processed tensor files
-processed_dir = r"E:\datasets\snd1156-1-1\data\processed"
+# processed_dir = r"E:\datasets\snd1156-1-1\data\processed"
+processed_dir = "/content/processed"
 all_files = glob.glob(os.path.join(processed_dir, "*.pt"))
 
 if not all_files:
@@ -28,7 +29,7 @@ dataloader = DataLoader(
     batch_size=config['training']['batch_size'],
     shuffle=True,
     drop_last=True,
-    num_workers=2,
+    num_workers=4,
     pin_memory=True
 )
 

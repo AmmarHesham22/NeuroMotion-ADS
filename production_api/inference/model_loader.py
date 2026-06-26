@@ -1,11 +1,10 @@
 import os
 import yaml
 import torch
-import sys
 
-# Ensure the root directory is accessible for imports
 from neuromotion_core.model.heads import NeuroMotionModel
 from neuromotion_core.preprocessing.graph_utils import build_adjacency_matrix
+# ... (باقي الكود زي ما هو بدون تعديل)
 
 def load_inference_model(checkpoint_path: str, config_path: str = None, device: str = "cpu"):
     """
@@ -13,7 +12,7 @@ def load_inference_model(checkpoint_path: str, config_path: str = None, device: 
     """
     if config_path is None:
         # Default assumption relative to the project root
-        config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../config/default_config.yaml'))
+        config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../neuromotion_core/config/default_config.yaml'))
         
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)

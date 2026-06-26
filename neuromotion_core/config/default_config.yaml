@@ -3,7 +3,7 @@ project: "NeuroMotion-ADS"
 seed: 42
 
 data:
-  window_size: 300       # 10s at 30FPS
+  window_size: 150      # 10s at 30FPS
   fps: 30
   num_joints: 17         # COCO format
   gaze_dim: 4            # yaw, pitch, blink_rate, interaction_density
@@ -12,7 +12,7 @@ model:
   d_model: 256
   st_gcn_layers: 4
   tcn_channels: [64, 128, 256]
-  transformer_layers: 6
+  transformer_layers: 4
   n_heads: 8
   dropout: 0.1
   latent_dim: 256
