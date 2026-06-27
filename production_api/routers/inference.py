@@ -19,9 +19,9 @@ from inference.model_loader import NeuroMotionInferenceSession
 router = APIRouter()
 
 # ==================================================
-# التعديل الجذري هنا: مسار الموديل الفعلي الموجود عندك في المشروع
+# مسار الموديل الفعلي الموجود عندك في المشروع
 # ==================================================
-CHECKPOINT_PATH = "model/neuromotion-epoch=36-train_infonce_loss=0.0000.ckpt"
+CHECKPOINT_PATH = "model/mse_loss=1.9968.ckpt"
 SCALER_PATH = "models/default_scaler.json"
 
 # محاولة تحميل الموديل في الذاكرة (Memory)
@@ -85,7 +85,14 @@ def process_video_pipeline(video_path: str):
             chunks = chunker.get_chunks(overlap_frames=150)
             
             for skel_chunk, gaze_chunk in chunks:
+                # --- Domain Adaptation ---
+                # 1. تكبير الإحداثيات باستخدام الـ Scaler المخصص
                 skel_scaled = scaler.transform(skel_chunk)
+                
+                # 2. تكبير زوايا الـ Gaze لمحاكاة الزوايا الحقيقية (Degrees)
+                gaze_chunk[:, 0] *= 100.0  # Yaw
+                gaze_chunk[:, 1] *= 100.0  # Pitch
+                # -------------------------
                 
                 skel_tensor = torch.tensor(skel_scaled).unsqueeze(0)
                 gaze_tensor = torch.tensor(gaze_chunk).unsqueeze(0)

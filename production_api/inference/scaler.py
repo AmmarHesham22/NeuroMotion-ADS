@@ -4,8 +4,7 @@ import numpy as np
 
 class CoordinateScaler:
     """
-    Spatial consistency anchor to ensure live video coordinates match 
-    the training dataset distribution.
+    Applies Domain Adaptation: Maps MediaPipe [0, 1] coords to DREAM Space
     """
     def __init__(self):
         self.is_fitted = False
@@ -14,28 +13,14 @@ class CoordinateScaler:
         self.min_val = None
         self.max_val = None
         
-    def fit(self, data: np.ndarray, method: str = "zscore"):
-        """
-        Fits the scaler to historical training data.
-        data shape is arbitrary, typically [N, Channels, Frames, Vertices]
-        Calculations are typically done per channel.
-        """
-        # Example logic if we ever fit at runtime/offline
-        pass
-        
     def save_scaler(self, filepath: str):
-        """
-        Stores calibration metrics as JSON.
-        """
         if not self.is_fitted:
             print("Warning: Scaler is not fitted. Saving empty scaler.")
             
         data = {
             "is_fitted": self.is_fitted,
             "mean": self.mean.tolist() if self.mean is not None else None,
-            "std": self.std.tolist() if self.std is not None else None,
-            "min_val": self.min_val.tolist() if self.min_val is not None else None,
-            "max_val": self.max_val.tolist() if self.max_val is not None else None
+            "std": self.std.tolist() if self.std is not None else None
         }
         
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
@@ -43,11 +28,8 @@ class CoordinateScaler:
             json.dump(data, f, indent=4)
             
     def load_scaler(self, filepath: str):
-        """
-        Loads calibration metrics.
-        """
         if not os.path.exists(filepath):
-            print(f"Warning: Scaler file {filepath} not found. Defaulting to identity passthrough.")
+            print(f"Warning: Scaler file {filepath} not found.")
             self.is_fitted = False
             return
             
@@ -61,31 +43,30 @@ class CoordinateScaler:
                 self.mean = np.array(data["mean"], dtype=np.float32)
             if data.get("std") is not None:
                 self.std = np.array(data["std"], dtype=np.float32)
-            if data.get("min_val") is not None:
-                self.min_val = np.array(data["min_val"], dtype=np.float32)
-            if data.get("max_val") is not None:
-                self.max_val = np.array(data["max_val"], dtype=np.float32)
                 
         except Exception as e:
-            print(f"Error loading scaler from {filepath}: {e}. Defaulting to identity passthrough.")
+            print(f"Error loading scaler: {e}")
             self.is_fitted = False
             
     def transform(self, skeleton_chunk: np.ndarray) -> np.ndarray:
         """
-        Applies loaded metrics to the live [3, 300, 17] tensor.
-        Fail-safe fallback: identity transformation if not fitted.
+        Reverse Mapping: Inflates MediaPipe normalized coords to match DREAM's raw scale.
         """
-        if not self.is_fitted:
-            # Passthrough transformation
+        if not self.is_fitted or self.mean is None or self.std is None:
             return skeleton_chunk
             
-        # Example Z-score scaling applying standard normalization per channel
-        # Assumes self.mean and self.std are shapes [3, 1, 1] to broadcast properly
         transformed = skeleton_chunk.copy()
         
-        if self.mean is not None and self.std is not None:
-            # Add eps to prevent division by zero
-            eps = 1e-8
-            transformed = (transformed - self.mean) / (self.std + eps)
-            
+        # إحداثيات MediaPipe تتراوح بين 0 و 1 (متوسط تقريبي 0.5 وانحراف 0.25)
+        mp_mean = 0.5
+        mp_std = 0.25
+        
+        # 1. تكبير إحداثيات X (القناة صفر)
+        transformed[0] = ((transformed[0] - mp_mean) / mp_std) * self.std[0] + self.mean[0]
+        
+        # 2. تكبير إحداثيات Y (القناة 1)
+        transformed[1] = ((transformed[1] - mp_mean) / mp_std) * self.std[1] + self.mean[1]
+        
+        # القناة 2 (الثقة - Confidence) تظل كما هي
+        
         return transformed
