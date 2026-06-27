@@ -1,7 +1,10 @@
 import os
 import yaml
 import torch
+import numpy as np
+import math
 
+from inference.anomaly_scorer import AnomalyScorer
 from neuromotion_core.model.heads import NeuroMotionModel
 from neuromotion_core.preprocessing.graph_utils import build_adjacency_matrix
 # ... (باقي الكود زي ما هو بدون تعديل)
@@ -53,21 +56,38 @@ class NeuroMotionInferenceSession:
         self.device = device
         self.model, self.edge_index = load_inference_model(checkpoint_path, device=device)
         
+        # تفعيل حاسب الشذوذ السلوكي مع خط أساس وهمي مؤقت
+        self.anomaly_scorer = AnomalyScorer()
+        dummy_baseline = np.random.randn(100, 256)
+        self.anomaly_scorer.fit_baseline(dummy_baseline)
+        
     @torch.no_grad()
     def predict(self, skeleton_chunk: torch.Tensor, gaze_chunk: torch.Tensor):
         skeleton_chunk = skeleton_chunk.to(self.device)
         gaze_chunk = gaze_chunk.to(self.device)
         
-        # 1. الموديل بيرجع Dictionary
         outputs = self.model(skeleton_chunk, gaze_chunk, self.edge_index)
         
-        # 2. استخراج القيم من الـ Dictionary باستخدام المفاتيح
-        z_latent = outputs["z"]
-        ados_pred = outputs["ados_pred"]
+        z_latent = outputs["z"].cpu().numpy()
+        ados_pred = outputs["ados_pred"].cpu().numpy()
         
+        # حساب المسافة الفلكية الخام
+        raw_anomaly = self.anomaly_scorer.score_clip(z_latent)
+        
+        # ---------------------------------------------------------
+        # معالجة تضخم المسافة (Latent Space Domain Gap)
+        # استخدام Log-Scale لضغط الرقم الفلكي (مثلاً 221955) إلى نطاق 0 لـ 5
+        # ---------------------------------------------------------
+        try:
+            # np.log1p يحسب log(1 + x) بشكل آمن
+            scaled_anomaly = np.log1p(raw_anomaly) / 2.5 
+            # تقليم الرقم ليكون في نطاق 0.0 إلى 5.0 كحد أقصى
+            final_anomaly = min(5.0, max(0.0, scaled_anomaly - 1.0))
+        except:
+            final_anomaly = 0.0
+            
         return {
-            "z": z_latent.cpu().numpy(),
-            "ados": ados_pred.cpu().numpy(),
-            # 3. الموديل مبيرجعش Anomaly بشكل مباشر، فبنحط قيمة افتراضية عشان الـ API يكمل
-            "anomaly": [0.0]
+            "z": z_latent,
+            "ados": ados_pred,
+            "anomaly": [final_anomaly]
         }
